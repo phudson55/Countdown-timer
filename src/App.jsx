@@ -1,5 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react'
+import TimerDisplay from './components/TimerDisplay'
+import Inputs from './components/Inputs'
+import Controls from './components/Controls'
+import QuickButtons from './components/QuickButtons'
 
+// Helper: format seconds as MM:SS
 function formatTime(seconds) {
   const mm = Math.floor(seconds / 60)
     .toString()
@@ -10,14 +15,36 @@ function formatTime(seconds) {
   return `${mm}:${ss}`
 }
 
+// App: orchestrates state and behavior, composes presentational components.
+// Responsibilities:
+// - maintain inputs (minutes/seconds)
+// - keep remaining seconds and running state
+// - start/pause/reset behavior and tick interval
 export default function App() {
+  // --- Inputs (controlled as strings so the user can type freely) ---
   const [minutesInput, setMinutesInput] = useState('01')
   const [secondsInput, setSecondsInput] = useState('00')
+
+  // --- Timer state ---
+  // remaining: number of seconds left
   const [remaining, setRemaining] = useState(60)
   const [isRunning, setIsRunning] = useState(false)
+
+  // useRef holds the interval id so we can clear from callbacks
+  //
+  // Why use a ref here?
+  // - A ref stores a mutable value that persists across renders without
+  //   triggering re-renders when it changes. That's perfect for the
+  //   numeric id returned by `setInterval`.
+  // - We keep the id in `intervalRef.current` so any effect or handler can
+  //   call `clearInterval(intervalRef.current)` to stop the timer.
+  // - Using a ref avoids stale-closure problems that can happen when
+  //   interval callbacks capture outdated state.
   const intervalRef = useRef(null)
 
-  // update remaining when inputs change (but only when not running)
+  // When the inputs change (and the timer is not running), update the
+  // remaining seconds to match the inputs. This keeps the display in sync
+  // with the form values when idle.
   useEffect(() => {
     if (!isRunning) {
       const m = parseInt(minutesInput || '0', 10)
@@ -27,11 +54,14 @@ export default function App() {
     }
   }, [minutesInput, secondsInput, isRunning])
 
+  // Interval effect: when isRunning is true, start a 1s interval that
+  // decrements remaining. When reaching 0, stop the timer.
   useEffect(() => {
     if (isRunning) {
       intervalRef.current = setInterval(() => {
         setRemaining(prev => {
           if (prev <= 1) {
+            // reached zero or about to — stop and clear interval
             clearInterval(intervalRef.current)
             setIsRunning(false)
             return 0
@@ -40,13 +70,21 @@ export default function App() {
         })
       }, 1000)
     }
+    // cleanup if isRunning toggles or component unmounts
     return () => clearInterval(intervalRef.current)
   }, [isRunning])
 
+
+
+
+
+  // --- Handlers ---
+  // toggle running state
   function handleStartPause() {
     setIsRunning(r => !r)
   }
 
+  // reset to values currently in inputs, and stop the timer
   function handleReset() {
     setIsRunning(false)
     const m = parseInt(minutesInput || '0', 10)
@@ -56,6 +94,7 @@ export default function App() {
     clearInterval(intervalRef.current)
   }
 
+  // quick set presets (stop timer and load preset seconds into inputs + remaining)
   function handleQuickSet(seconds) {
     setIsRunning(false)
     setRemaining(seconds)
@@ -65,49 +104,29 @@ export default function App() {
     setSecondsInput(String(s).padStart(2, '0'))
   }
 
+  // --- Render: compose small components for clarity ---
   return (
     <div className="container">
       <h1>Countdown Timer</h1>
 
-      <div className="display">{formatTime(remaining)}</div>
+      {/* Display: large MM:SS readout */}
+      <TimerDisplay value={remaining} format={formatTime} />
 
       <div className="controls">
-        <div className="inputs">
-          <label>
-            Minutes
-            <input
-              type="number"
-              min="0"
-              value={minutesInput}
-              onChange={e => setMinutesInput(e.target.value)}
-              disabled={isRunning}
-            />
-          </label>
-          <label>
-            Seconds
-            <input
-              type="number"
-              min="0"
-              max="59"
-              value={secondsInput}
-              onChange={e => setSecondsInput(e.target.value)}
-              disabled={isRunning}
-            />
-          </label>
-        </div>
+        {/* Inputs: minutes / seconds */}
+        <Inputs
+          minutes={minutesInput}
+          seconds={secondsInput}
+          setMinutes={setMinutesInput}
+          setSeconds={setSecondsInput}
+          disabled={isRunning}
+        />
 
-        <div className="buttons">
-          <button onClick={handleStartPause} className="primary">
-            {isRunning ? 'Pause' : 'Start'}
-          </button>
-          <button onClick={handleReset}>Reset</button>
-        </div>
+        {/* Buttons: Start/Pause & Reset */}
+        <Controls isRunning={isRunning} onStartPause={handleStartPause} onReset={handleReset} />
 
-        <div className="quick">
-          <button onClick={() => handleQuickSet(60)}>1 min</button>
-          <button onClick={() => handleQuickSet(300)}>5 min</button>
-          <button onClick={() => handleQuickSet(600)}>10 min</button>
-        </div>
+        {/* Quick preset buttons */}
+        <QuickButtons onSet={handleQuickSet} />
       </div>
 
       <p className="note">Tip: edit minutes/seconds then press Start.</p>
